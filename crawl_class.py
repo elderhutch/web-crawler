@@ -80,46 +80,50 @@ class AsyncCrawler:
             if not await self.add_page_visit(normalized_url):
                 print(f"Already visited or max pages reached: {normalized_url}, skipping")
                 return
-                
-            async with self.semaphore:
-                print(f"Acquired semaphore, crawling: {current_url}")
-                html = await self.get_html(current_url)
-                if html is None:
-                    print(f"Failed to get HTML for {current_url}")
-                    return
-
-                print(f"Successfully got HTML for {current_url}, extracting data...")
-                data = extract_page_data(html, current_url)
-                async with self.lock:
-                    self.page_data[normalized_url] = data
-                    print(f"Stored data for {normalized_url}")
             
-                if self.should_stop:
-                    return
+            try:
+                async with asyncio.timeout(5):  # 5 second timeout
+                    async with self.semaphore:
+                        print(f"Acquired semaphore, crawling: {current_url}")
+                        html = await self.get_html(current_url)
+                        if html is None:
+                            return
 
-                print(f"\nFound {len(data['outgoing_links'])} outgoing links")
-                local_tasks = set()
-                for link in data["outgoing_links"]:
-                    if self.should_stop:
-                        break
-                    normalized_link = normalize_url(link)
-                    if normalized_link.startswith(normalize_url(base_url)):
-                        print(f"Creating task for link: {link}")
-                        task = asyncio.create_task(self.crawl_page(base_url, link))
-                        task.add_done_callback(self.remove_done_task)
-                        local_tasks.add(task)
-                        self.all_tasks.add(task)
-                    else:
-                        print(f"Skipping external link: {link}")
+                        print(f"Successfully got HTML for {current_url}, extracting data...")
+                        data = extract_page_data(html, current_url)
+                        async with self.lock:
+                            self.page_data[normalized_url] = data
+                            print(f"Stored data for {normalized_url}")
+            
+                        if self.should_stop:
+                            return
 
-                if local_tasks and not self.should_stop:
-                    print(f"\nGathering {len(local_tasks)} tasks for this page...")
-                    await asyncio.gather(*local_tasks, return_exceptions=True)
-                    print("All tasks completed for this page")
+                        print(f"\nFound {len(data['outgoing_links'])} outgoing links")
+                        local_tasks = set()
+                        
+                        for link in data["outgoing_links"]:
+                            if self.should_stop:
+                                break
+                            normalized_link = normalize_url(link)
+                            if normalized_link.startswith(normalize_url(base_url)):
+                                print(f"Creating task for link: {link}")
+                                task = asyncio.create_task(self.crawl_page(base_url, link))
+                                task.add_done_callback(self.remove_done_task)
+                                local_tasks.add(task)
+                                self.all_tasks.add(task)
+                            else:
+                                print(f"Skipping external link: {link}")
 
-        except asyncio.CancelledError:
-            print(f"Crawl cancelled for {current_url}")
-            raise
+                        if local_tasks and not self.should_stop:
+                            await asyncio.gather(*local_tasks, return_exceptions=True)
+
+            except asyncio.TimeoutError:
+                print(f"Timeout waiting for semaphore: {current_url}")
+                return
+            except asyncio.CancelledError:
+                print(f"Semaphore acquisition cancelled for {current_url}")
+                return
+
         except Exception as e:
             print(f"Error crawling {current_url}: {e}")
             raise

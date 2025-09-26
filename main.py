@@ -2,6 +2,7 @@ import sys
 import asyncio
 from crawl import *
 from crawl_class import *
+from csv_report import write_csv_report
 
 async def main():
     if len(sys.argv) < 4:
@@ -19,7 +20,7 @@ async def main():
         max_concurrency = int(sys.argv[2])
         max_pages = int(sys.argv[3])
         result = await crawl_site_async(sys.argv[1], max_concurrency, max_pages)
-        print(result)
+        write_csv_report(result)
         sys.exit(0)
 
 if __name__ == "__main__":
