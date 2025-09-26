@@ -1,3 +1,4 @@
+from urllib.parse import urlparse, urljoin
 import urllib.parse
 import requests
 from bs4 import BeautifulSoup
@@ -17,8 +18,10 @@ and they lived at the bottom of a well.</p>
 '''
 
 def normalize_url(url):
-    urlparsed = urllib.parse.urlparse(url)
-    return urlparsed.netloc + urlparsed.path
+    parsed_url = urlparse(url)
+    full_path = f"{parsed_url.netloc}{parsed_url.path}"
+    full_path = full_path.rstrip("/")
+    return full_path.lower()
 
 def get_h1_from_html(html):
     soup = BeautifulSoup(html, 'html.parser')
